@@ -8,12 +8,12 @@
  */
 package biz.netcentric.aem.tools.acvalidator.gui.yaml.model;
 
+import biz.netcentric.aem.tools.acvalidator.gui.yaml.parser.YamlParserException;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
-
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.parser.YamlParserException;
 
 /**
  * Node to store principals.
@@ -35,7 +35,7 @@ public class PrincipalNode extends ConfigurationNode {
 
 	@Override
 	public List<Class> getAllowedSubnodeClasses() {
-		return Arrays.asList(new Class[] {PagesNode.class, UserAdminNode.class});
+		return Arrays.asList(new Class[] {PagesNode.class, ResourcesNode.class, UserAdminNode.class});
 	}
 
 	@Override
@@ -64,9 +64,11 @@ public class PrincipalNode extends ConfigurationNode {
 			for (Object identifier : subnode.keySet()) {
 				if (PagesNode.NAME.equals(identifier)) {
 					addPagesNode((List<LinkedHashMap>) subnode.get(PagesNode.NAME));
-				}
-				else if (UserAdminNode.NAME.equals(identifier)) {
+				}else if (UserAdminNode.NAME.equals(identifier)) {
 					addUseradminNode((List<LinkedHashMap>) subnode.get(UserAdminNode.NAME));
+				}
+				else if (ResourcesNode.NAME.equals(identifier)) {
+					addNodesNode((List<LinkedHashMap>) subnode.get(ResourcesNode.NAME));
 				}
 				else {
 					throw new YamlParserException("Unknown subnode for principals: " + identifier.toString());
@@ -97,6 +99,12 @@ public class PrincipalNode extends ConfigurationNode {
 		UserAdminNode useradminNode = new UserAdminNode();
 		useradminNode.addNodesFromYaml(subnodes);
 		addSubnode(useradminNode);
+	}
+
+	private void addNodesNode(List<LinkedHashMap> subnodes) throws YamlParserException {
+		ResourcesNode resourcesNode = new ResourcesNode();
+		resourcesNode.addNodesFromYaml(subnodes);
+		addSubnode(resourcesNode);
 	}
 
 }

@@ -8,41 +8,20 @@
  */
 package biz.netcentric.aem.tools.acvalidator.gui.yaml.mapper;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import org.apache.commons.lang3.StringUtils;
-
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.AssignUserToGroupNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.ConfigurationNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.CreateGroupNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.CreateUserNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.ModifyGroupNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.ModifyUserNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.PageTestNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.PagesNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.Property;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.RootNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.UserAdminNode;
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.UserAdminTestNode;
+import biz.netcentric.aem.tools.acvalidator.gui.yaml.model.*;
 import biz.netcentric.aem.tools.acvalidator.gui.yaml.parser.YamlParserException;
 import biz.netcentric.aem.tools.acvalidator.model.AcTestSet;
-import biz.netcentric.aem.tools.acvalidator.model.authorizabletestcases.GroupCreateTest;
-import biz.netcentric.aem.tools.acvalidator.model.authorizabletestcases.ModifyGroupTest;
-import biz.netcentric.aem.tools.acvalidator.model.authorizabletestcases.ModifyUserTest;
-import biz.netcentric.aem.tools.acvalidator.model.authorizabletestcases.UserAddToGroupTest;
-import biz.netcentric.aem.tools.acvalidator.model.authorizabletestcases.UserCreateTest;
-import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageCreateTest;
-import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageDeleteTest;
-import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageModifyTest;
-import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageReadTest;
-import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageReplicateTest;
+import biz.netcentric.aem.tools.acvalidator.model.authorizabletestcases.*;
+import biz.netcentric.aem.tools.acvalidator.model.nodetestcases.ResourceCreateTest;
+import biz.netcentric.aem.tools.acvalidator.model.nodetestcases.ResourceDeleteTest;
+import biz.netcentric.aem.tools.acvalidator.model.nodetestcases.ResourceModifyTest;
+import biz.netcentric.aem.tools.acvalidator.model.nodetestcases.ResourceReadTest;
+import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.*;
 import biz.netcentric.aem.tools.acvalidator.model.permissiontestcases.AclReadTest;
 import biz.netcentric.aem.tools.acvalidator.model.permissiontestcases.AclWriteTest;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.*;
 
 /**
  * Maps the Yaml structure to a test file that can be executed later.
@@ -102,6 +81,8 @@ public class YamlTestSetMapper {
 			}
 			else if (node instanceof UserAdminNode) {
 				addUserAdminTests(testSet, (UserAdminNode) node);
+			}else if (node instanceof ResourcesNode) {
+				addNodeTests(testSet, (ResourcesNode) node);
 			}
 		}
 	}
@@ -167,6 +148,56 @@ public class YamlTestSetMapper {
 				AclWriteTest test = new AclWriteTest(pageNode.getPath(), pageNode.isAllow(), simulate);
 				testSet.addAcTestCase(test);
 			}
+		}
+	}
+
+	private void addNodeTests(AcTestSet testSet, ResourcesNode node) throws YamlParserException
+	{
+		for (ConfigurationNode subnode : node.getSubnodes()) {
+			ResourceTestNode testNode = (ResourceTestNode) subnode;
+
+			if (testNode.isNodeCreateTest()) {
+				boolean simulate = !skipSimulation && testNode.isSimulate();
+				ResourceCreateTest test = new ResourceCreateTest(testNode.getPath(), testNode.isAllow(), simulate);
+				testSet.addAcTestCase(test);
+			}
+			if (testNode.isNodeReadTest()) {
+				boolean simulate = !skipSimulation && testNode.isSimulate();
+				ResourceReadTest test = new ResourceReadTest(testNode.getPath(), testNode.isAllow(), simulate);
+				testSet.addAcTestCase(test);
+			}
+			if (testNode.isNodeDeleteTest()) {
+				boolean simulate = !skipSimulation && testNode.isSimulate();
+				ResourceDeleteTest test = new ResourceDeleteTest(testNode.getPath(), testNode.isAllow(), simulate);
+				testSet.addAcTestCase(test);
+			}
+			if(testNode.isNodeModifyTest()){
+				boolean simulate = !skipSimulation && testNode.isSimulate();
+				Map<String, Property> propertiesMap = testNode.getPropertiesMap();
+				Property modifyProperties = propertiesMap.get(ResourceTestNode.PROPERTY_NAMES_MODIFY);
+				Set<String> propertiesToModify = new HashSet<>();
+				if(simulate){
+					if(StringUtils.isBlank(modifyProperties.getValue())){
+						throw new YamlParserException("testfile: " + this.pathToTestfile + ", property: '" + ResourceTestNode.PROPERTY_NAMES_MODIFY + "' in PageModify test for authorizable: " + testSet.getAuthorizableID()+ " cannot be blank, if simulate is set to true!");
+					}
+					propertiesToModify = new HashSet<String>(Arrays.asList(modifyProperties.getValue().trim().split("\\s*,\\s*")));
+				}
+
+				ResourceModifyTest test = new ResourceModifyTest(testNode.getPath(), testNode.isAllow(), simulate, propertiesToModify);
+				testSet.addAcTestCase(test);
+			}
+
+			if(testNode.isAclReadTest()){
+				boolean simulate = !skipSimulation && testNode.isSimulate();
+				AclReadTest test = new AclReadTest(testNode.getPath(), testNode.isAllow(), simulate);
+				testSet.addAcTestCase(test);
+			}
+			if(testNode.isAclWriteTest()){
+				boolean simulate = !skipSimulation && testNode.isSimulate();
+				AclWriteTest test = new AclWriteTest(testNode.getPath(), testNode.isAllow(), simulate);
+				testSet.addAcTestCase(test);
+			}
+
 		}
 	}
 

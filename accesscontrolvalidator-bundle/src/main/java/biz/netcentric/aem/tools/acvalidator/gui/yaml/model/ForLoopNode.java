@@ -8,18 +8,12 @@
  */
 package biz.netcentric.aem.tools.acvalidator.gui.yaml.model;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
+import biz.netcentric.aem.tools.acvalidator.gui.yaml.parser.YamlParserException;
 import org.apache.commons.lang3.StringUtils;
 
-import biz.netcentric.aem.tools.acvalidator.gui.yaml.parser.YamlParserException;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Node to represent a FOR loop.
@@ -56,8 +50,18 @@ public class ForLoopNode extends ConfigurationNode {
 				else if (parent instanceof UserAdminNode) {
 					addUserTestNode(subNode);
 				}
+				else if (parent instanceof ResourcesNode) {
+						addNodesTestNode(subNode);
+					}
 			}
 		}
+	}
+
+	private void addNodesTestNode(LinkedHashMap properties) throws YamlParserException
+	{
+		ResourceTestNode pageTestNode = new ResourceTestNode();
+		pageTestNode.setPropertiesFromYaml(properties);
+		addSubnode(pageTestNode);
 	}
 
 	/**
@@ -210,6 +214,9 @@ public class ForLoopNode extends ConfigurationNode {
 	private ConfigurationNode copy(ConfigurationNode node) {
 		if (node instanceof PageTestNode) {
 			return new PageTestNode((PageTestNode) node);
+		}
+		if (node instanceof ResourceTestNode) {
+			return new ResourceTestNode((ResourceTestNode) node);
 		}
 		if (node instanceof AssignUserToGroupNode) {
 			return new AssignUserToGroupNode((AssignUserToGroupNode) node);
