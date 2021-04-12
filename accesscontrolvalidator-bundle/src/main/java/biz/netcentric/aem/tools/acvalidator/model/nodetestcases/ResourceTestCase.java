@@ -50,9 +50,9 @@ public abstract class ResourceTestCase implements Testable {
 	protected boolean isOk(ResourceResolver testUserResolver, Authorizable authorizable) throws RepositoryException {
 		boolean isOk = false;
 		if(this.simulate){
-			isOk = !(isSimulateSuccess ^ this.isAllow);
+			isOk = isSimulateSuccess == this.isAllow;
 		}else{
-			isOk = !(isCQActionsOk(testUserResolver, authorizable) ^ this.isAllow);
+			isOk = isCQActionsOk(testUserResolver, authorizable) == this.isAllow;
 		}
 		return isOk;
 	}
