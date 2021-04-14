@@ -13,15 +13,19 @@ import biz.netcentric.aem.tools.acvalidator.model.SimulatableTest;
 import biz.netcentric.aem.tools.acvalidator.model.Testable;
 import com.day.cq.wcm.api.WCMException;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.jackrabbit.JcrConstants;
 import org.apache.jackrabbit.api.security.user.Authorizable;
 import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.PersistenceException;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jcr.Item;
 import javax.jcr.RepositoryException;
+import javax.jcr.Session;
+import javax.jcr.Workspace;
+import java.util.HashMap;
 
 /**
  * Checks if a page can(not) be deleted.
@@ -35,6 +39,7 @@ public class ResourceDeleteTest extends ResourceTestCase implements SimulatableT
     private String path;
     private Authorizable authorizable;
     private String errorMessage;
+    private Resource tmpFolder;
 
     /**
      * Constructor
@@ -56,6 +61,7 @@ public class ResourceDeleteTest extends ResourceTestCase implements SimulatableT
 
         if (isNodeExisting(serviceResourcerResolver)) {
             if (this.simulate) {
+                tmpFolder = serviceResourcerResolver.getResource("/tmp/ac-tests");
                 try {
                     isSimulateSuccess = deletePage(serviceResourcerResolver, testUserResolver);
                 } catch (WCMException e) {
@@ -82,24 +88,40 @@ public class ResourceDeleteTest extends ResourceTestCase implements SimulatableT
         return true;
     }
 
-    private boolean deletePage(ResourceResolver serviceResourcerResolver, ResourceResolver testUserResolver) throws WCMException {
+    private boolean deletePage(ResourceResolver serviceResourcerResolver, ResourceResolver testUserResolver) throws WCMException, RepositoryException {
         Resource resource = serviceResourcerResolver.getResource(this.path);
         try {
             // TODO: clarify if param 'shallow' should be influenceable
             // autosave set to false - we don't want to really delete the testpage
-			//somehow testUserResolver.delete() auto commits and actually deletes nodes...
-
-			Item item = resource.adaptTo(Item.class);
-			item.remove();
-			item.refresh(false);
-
-		} catch (Exception e) {
+            //somehow testUserResolver.delete() auto commits and actually deletes nodes...
+            saveCopy(serviceResourcerResolver, resource);
+            testUserResolver.delete(resource);
+            revertCopy(serviceResourcerResolver, resource);
+            return true;
+        } catch (Exception e) {
             this.errorMessage = (e.getLocalizedMessage() != null) ? e.getLocalizedMessage() : e.toString();
             return false;
-        } finally {
-			testUserResolver.revert();
         }
-        return true;
     }
 
+
+    private void saveCopy(ResourceResolver serviceResourcerResolver, Resource resource) throws PersistenceException, RepositoryException {
+        Workspace workspace = serviceResourcerResolver.adaptTo(Session.class).getWorkspace();
+        HashMap<String, Object> map = new HashMap<>();
+        map.put(JcrConstants.JCR_PRIMARYTYPE, JcrConstants.NT_UNSTRUCTURED);
+        map.put("srcPath", resource.getPath());
+        Resource wrapper = serviceResourcerResolver.create(this.tmpFolder, resource.getName(), map);
+        serviceResourcerResolver.commit();
+        workspace.copy(this.path, wrapper.getPath() + "/revert");
+    }
+
+    private void revertCopy(ResourceResolver serviceResourcerResolver, Resource resource) throws RepositoryException, PersistenceException {
+        Workspace workspace = serviceResourcerResolver.adaptTo(Session.class).getWorkspace();
+        Resource wrapper = serviceResourcerResolver.getResource(this.tmpFolder.getPath() + "/" + resource.getName());
+        if(wrapper != null){
+            Resource revert = wrapper.getChild("revert");
+            workspace.copy(revert.getPath(), this.path);
+            serviceResourcerResolver.delete(wrapper);
+        }
+    }
 }

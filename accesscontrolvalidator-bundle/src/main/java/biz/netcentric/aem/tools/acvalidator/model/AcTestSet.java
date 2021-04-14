@@ -8,136 +8,168 @@
  */
 package biz.netcentric.aem.tools.acvalidator.model;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import javax.jcr.RepositoryException;
-
+import biz.netcentric.aem.tools.acvalidator.api.TestResult;
+import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageTestCase;
+import biz.netcentric.aem.tools.acvalidator.serviceuser.ServiceResourceResolverService;
+import com.day.cq.commons.jcr.JcrConstants;
 import org.apache.jackrabbit.api.security.user.AuthorizableExistsException;
 import org.apache.jackrabbit.api.security.user.Group;
 import org.apache.jackrabbit.api.security.user.User;
 import org.apache.jackrabbit.api.security.user.UserManager;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.PersistenceException;
+import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import biz.netcentric.aem.tools.acvalidator.api.TestResult;
-import biz.netcentric.aem.tools.acvalidator.model.pagetestcases.PageTestCase;
-import biz.netcentric.aem.tools.acvalidator.serviceuser.ServiceResourceResolverService;
+import javax.jcr.RepositoryException;
+import javax.jcr.Session;
+import javax.jcr.Workspace;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 
 /**
  * A {@link AcTestSet} comprises of one or several {@link PageTestCase}, creates needed testusers and resolvers for executing the tescases
- * @author jochenkoschorke
  *
+ * @author jochenkoschorke
  */
 public class AcTestSet {
-	
-	private final Logger LOG = LoggerFactory.getLogger(AcTestSet.class);
+
+    private final Logger LOG = LoggerFactory.getLogger(AcTestSet.class);
 
 
-	private static final String ACVALIDATOR_TESTUSER_ID = "acvalidator-testuser";
-	private static final String ACVALIDATOR_TESTUSER_PASSWORD = "TZ%ukM!FLPa8";
+    private static final String ACVALIDATOR_TESTUSER_ID = "acvalidator-testuser";
+    private static final String ACVALIDATOR_TESTUSER_PASSWORD = "TZ%ukM!FLPa8";
 
-	private List<Testable> acTestCase;
-	private String authorizableID;
+    private List<Testable> acTestCase;
+    private String authorizableID;
 
-	/**
-	 * Constructor
-	 * 
-	 * @param authorizableID user/group id
-	 * @param pathToTestfile path to testfile in repository
-	 */
-	public AcTestSet(String authorizableID, String pathToTestfile) {
-		this.authorizableID = authorizableID;
-		acTestCase = new ArrayList<>();
-	}
-	public void addAcTestCase(Testable testable){
-		this.acTestCase.add(testable);
-	}
-	
-	public String getAuthorizableID(){
-		return this.authorizableID;
-	}
+    /**
+     * Constructor
+     *
+     * @param authorizableID user/group id
+     * @param pathToTestfile path to testfile in repository
+     */
+    public AcTestSet(String authorizableID, String pathToTestfile) {
+        this.authorizableID = authorizableID;
+        acTestCase = new ArrayList<>();
+    }
 
-	/**
-	 * creates the needed testuser and resolver needed for the testcases, executes the tests and cleans up afterwards
-	 * @param serviceResourceResolverService instance of ServiceResourceResolverService
-	 * @return List of TestResult
-	 * @throws RepositoryException error during user creation
-	 * @throws LoginException error while creating ResourceResolver
-	 */
-	public List<TestResult> isOk(ServiceResourceResolverService serviceResourceResolverService) throws RepositoryException, LoginException {
-		List<TestResult> resultList = new ArrayList<>();
-		User testuser = null;
-		Group testGroup = null;
-		ResourceResolver serviceResourcerResolver = null;
-		ResourceResolver testUserResolver = null;
-		try {
-			// create authorizables 
-			serviceResourcerResolver = serviceResourceResolverService.getServiceResourceResolver();
+    public void addAcTestCase(Testable testable) {
+        this.acTestCase.add(testable);
+    }
 
-			UserManager userManager = getUserManager(serviceResourcerResolver);
+    public String getAuthorizableID() {
+        return this.authorizableID;
+    }
 
-			testuser =  userManager.createUser(ACVALIDATOR_TESTUSER_ID, ACVALIDATOR_TESTUSER_PASSWORD);
-			testGroup = getTestGroup(getUserManager(serviceResourcerResolver), authorizableID, testuser);
+    /**
+     * creates the needed testuser and resolver needed for the testcases, executes the tests and cleans up afterwards
+     *
+     * @param serviceResourceResolverService instance of ServiceResourceResolverService
+     * @return List of TestResult
+     * @throws RepositoryException error during user creation
+     * @throws LoginException      error while creating ResourceResolver
+     */
+    public List<TestResult> isOk(ServiceResourceResolverService serviceResourceResolverService) throws RepositoryException, LoginException {
+        List<TestResult> resultList = new ArrayList<>();
+        User testuser = null;
+        Group testGroup = null;
+        ResourceResolver serviceResourcerResolver = null;
+        ResourceResolver testUserResolver = null;
+        Resource tmpFolder = null;
+        try {
+            // create authorizables
+            serviceResourcerResolver = serviceResourceResolverService.getServiceResourceResolver();
+            tmpFolder = serviceResourcerResolver.getResource("/tmp/ac-tests");
+            if (tmpFolder == null) {
+                Resource tmp = serviceResourcerResolver.getResource("/tmp");
+                HashMap<String, Object> map = new HashMap<>();
+                map.put(JcrConstants.JCR_PRIMARYTYPE, "sling:Folder");
+                tmpFolder = serviceResourcerResolver.create(tmp, "ac-tests", map);
+            }
 
-			// we need to persist the created testuser in order to be able to get a resolver for him 
-			serviceResourcerResolver.commit();
-			LOG.debug("comitting serviceResourcerResolver to persist testuser");
-			// create ResourceResolver for the testuser based on his permissions
-			testUserResolver = serviceResourceResolverService.getTestUserResourceResolver(ACVALIDATOR_TESTUSER_ID, ACVALIDATOR_TESTUSER_PASSWORD);
 
-			// execute all testcases for the testuser
-			for(Testable testable: acTestCase){
-				resultList.add(testable.isOk(serviceResourcerResolver, testUserResolver, testGroup));
-			}
-		} catch (PersistenceException e) {
-			throw new RepositoryException(e);
-		}finally{
-			// clean up temporary testuser
-			if(testGroup != null && testuser != null){
-				testGroup.removeMember(testuser);
-			}
-			if(testuser != null){
-				testuser.remove();
-			}
-			
-			// close resolvers
-			
-			if(testUserResolver != null){
-				testUserResolver.revert();
-				testUserResolver.close();
-			}
+            UserManager userManager = getUserManager(serviceResourcerResolver);
 
-			if(serviceResourcerResolver != null){
-				try {
-					if(serviceResourcerResolver.hasChanges()){
-						serviceResourcerResolver.commit();
-					}
-					serviceResourcerResolver.close();
-				} catch (PersistenceException e) {
-					throw new RepositoryException(e);
-				}
-			}
-		}
-		return resultList;
-	}
+            testuser = userManager.createUser(ACVALIDATOR_TESTUSER_ID, ACVALIDATOR_TESTUSER_PASSWORD);
+            testGroup = getTestGroup(getUserManager(serviceResourcerResolver), authorizableID, testuser);
 
-	private Group getTestGroup(UserManager userManager, String authorizableID, User testuser) throws AuthorizableExistsException, RepositoryException{
-		Group group = (Group) userManager.getAuthorizable(authorizableID);
-		group.addMember(testuser);
-		return group;
-	}
+            // we need to persist the created testuser in order to be able to get a resolver for him
+            serviceResourcerResolver.commit();
+            LOG.debug("comitting serviceResourcerResolver to persist testuser");
+            // create ResourceResolver for the testuser based on his permissions
+            testUserResolver = serviceResourceResolverService.getTestUserResourceResolver(ACVALIDATOR_TESTUSER_ID, ACVALIDATOR_TESTUSER_PASSWORD);
 
-	private UserManager getUserManager(ResourceResolver resolver){
-		UserManager userManager = resolver.adaptTo(UserManager.class);
-		if(userManager == null){
-			throw new IllegalStateException("Could not adapt ResourceResolver to UserManager!");
-		}
-		return userManager;
-	}
+            // execute all testcases for the testuser
+            for (Testable testable : acTestCase) {
+                resultList.add(testable.isOk(serviceResourcerResolver, testUserResolver, testGroup));
+            }
+
+            serviceResourcerResolver.delete(tmpFolder);
+
+        } catch (PersistenceException e) {
+            throw new RepositoryException(e);
+        } finally {
+            // clean up temporary testuser
+            if (testGroup != null && testuser != null) {
+                testGroup.removeMember(testuser);
+            }
+            if (testuser != null) {
+                testuser.remove();
+            }
+
+            revert(serviceResourcerResolver, tmpFolder);
+
+            // close resolvers
+
+            if (testUserResolver != null) {
+                testUserResolver.revert();
+                testUserResolver.close();
+            }
+
+            if (serviceResourcerResolver != null) {
+                try {
+                    if (serviceResourcerResolver.hasChanges()) {
+                        serviceResourcerResolver.commit();
+                    }
+                    serviceResourcerResolver.close();
+                } catch (PersistenceException e) {
+                    throw new RepositoryException(e);
+                }
+            }
+        }
+        return resultList;
+    }
+
+    private void revert(ResourceResolver resolver, Resource tmpFolder) {
+        Workspace workspace = resolver.adaptTo(Session.class).getWorkspace();
+
+        for (Resource child : tmpFolder.getChildren()) {
+            String srcPath = child.getValueMap().get("srcPath").toString();
+            try {
+                workspace.copy(child.getChild("revert").getPath(), srcPath);
+            } catch (RepositoryException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private Group getTestGroup(UserManager userManager, String authorizableID, User testuser) throws AuthorizableExistsException, RepositoryException {
+        Group group = (Group) userManager.getAuthorizable(authorizableID);
+        group.addMember(testuser);
+        return group;
+    }
+
+    private UserManager getUserManager(ResourceResolver resolver) {
+        UserManager userManager = resolver.adaptTo(UserManager.class);
+        if (userManager == null) {
+            throw new IllegalStateException("Could not adapt ResourceResolver to UserManager!");
+        }
+        return userManager;
+    }
 
 }
